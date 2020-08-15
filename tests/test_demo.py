@@ -6,7 +6,6 @@ from reader.json_reader import JSONReader
 from reader.schema import JSONInput
 from entity.inventory import Inventory
 
-import mock
 import unittest
 
 
