@@ -1,18 +1,48 @@
-from multiprocessing import Lock, Value, Manager
+from threading import RLock
+
 from .errors import (InventoryFetchException,
                      InventoryLowException, InventoryRefillException)
 
 
 class Inventory(object):
-    _lock = Lock()
-    _manager = Manager()
-    _ingredients = _manager.dict()
+    """
+    Inventory entity is used to manage stock in the system.
+    Actions like refilling & fetching from inventory are Critical
+    Section Problem. Thus, Inventory has maintains a lock for
+    performing such actions. The timeout for acquiring such lock
+    depends on the constant time expected for these actions. If the
+    timeout is set to -1, it is expected to have no upper limit.
+    """
+    _lock = RLock()
+    _ingredients = {}
+
+    def __init__(self, refill_time, fetch_time):
+        """
+        param:refill_time - define a constant refill timeout
+            for inventory. Refilling action can only acquire the
+            _lock for this duration
+        param:fetch_time - define a constant fetch time for
+            inventory. Fetch action can only acquire the
+            _lock for this duration
+        """
+        self.refill_time = refill_time
+        self.fetch_time = fetch_time
+
+    @classmethod
+    def reset(cls):
+        Inventory._ingredients = {}
 
     def refill(self, ingredients):
+        """
+        param:ingredients - dict{Ingredient: int<quantity>} to be refilled
+        """
         locked = False
         try:
-            locked = Inventory._lock.acquire(block=True, timeout=None)
+            # acquire lock when available
+            locked = Inventory._lock.acquire(
+                blocking=True, timeout=self.refill_time)
 
+            # add or update ingredients to inventory
             for ingredient in ingredients:
                 if not Inventory._ingredients.get(ingredient):
                     Inventory._ingredients[ingredient] = 0
@@ -24,14 +54,27 @@ class Inventory(object):
                 f'Failed to refill inventory:{str(exc)}'
             )
         finally:
+            # release the lock if it was acquired
             if locked:
                 Inventory._lock.release()
 
     def get_ingredients(self, ingredients):
+        """
+        param:ingredients - dict{Ingredient: int<quantity>} to be fetched
+        """
         try:
-            locked = Inventory._lock.acquire(block=True, timeout=None)
+            # acquire lock when available
+            locked = Inventory._lock.acquire(
+                blocking=True, timeout=self.fetch_time)
+
             insufficient_ingredients = []
             unavailable_ingredients = []
+
+            # check if required ingredients are available in inventory
+            # update insufficient_ingredients if available qty is less
+            # than required
+            # update unavailable_ingredients if a required ingredient
+            # is unavailable in inventory
             for ingredient in ingredients:
                 if (not Inventory._ingredients.get(ingredient) or
                         Inventory._ingredients[ingredient] == 0):
@@ -39,8 +82,9 @@ class Inventory(object):
                 elif Inventory._ingredients[ingredient] < ingredients[ingredient]:
                     insufficient_ingredients.append(ingredient)
 
+            # build err_str if ingredients are are unavailable and/or
+            # insufficient in qty
             err_str = ''
-
             if unavailable_ingredients or insufficient_ingredients:
 
                 if unavailable_ingredients:
@@ -57,6 +101,8 @@ class Inventory(object):
                                ' is not sufficient')
 
             else:
+                # if all ingredients are available in required qty
+                # remove them from inventory for preparation
                 for ingredient in ingredients:
                     Inventory._ingredients[ingredient] = (
                         Inventory._ingredients[ingredient] -
@@ -71,5 +117,6 @@ class Inventory(object):
             if err_str:
                 raise InventoryLowException(f'{err_str}')
         finally:
+            # release the lock if it was acquired
             if locked:
                 Inventory._lock.release()

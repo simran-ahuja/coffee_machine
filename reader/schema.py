@@ -7,6 +7,9 @@ class BaseSchema(Schema):
 
 
 class JSONInput(BaseSchema):
+    """
+    JSONInput - marshmallow schema for JSON input
+    """
 
     class Machine(BaseSchema):
 

@@ -1,3 +1,4 @@
-class Ingredient(object):
-    def __init__(self, name):
-        self.name = name
+from typing import NewType
+
+# define ingredient type for the system
+Ingredient = NewType('Ingredient', int)
